@@ -97,7 +97,7 @@ services:
     container_name: more3zdenai_frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost
       HOSTNAME: "0.0.0.0"
     depends_on:
       backend:

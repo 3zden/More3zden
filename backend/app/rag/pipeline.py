@@ -1,11 +1,12 @@
 """
-RAG Pipeline Orchestrator
+Async RAG Pipeline Orchestrator
 Ties together: FAISS retrieval → context building → Ollama generation.
-This is the single entry point used by Django views.
+Single entry point used by the FastAPI routes.
 """
+import asyncio
 import os
-from dataclasses import dataclass
-from typing import Generator, List, Optional
+from dataclasses import dataclass, field
+from typing import AsyncGenerator, List, Optional, Tuple
 
 from .llm_client import OllamaClient, get_ollama_client
 from .vector_store import FAISSVectorStore, get_vector_store
@@ -14,26 +15,23 @@ from .vector_store import FAISSVectorStore, get_vector_store
 TOP_K_RETRIEVAL = int(os.getenv("RAG_TOP_K", "5"))
 MIN_RELEVANCE_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.3"))
 
+NO_CONTEXT_MESSAGE = (
+    "I don't have enough information to answer that question. "
+    "Try asking about Azzeddine's skills, projects, or experience."
+)
+
 
 @dataclass
 class RAGResponse:
     answer: str
-    sources: List[dict]
-    cached: bool
-    model: str
+    sources: List[dict] = field(default_factory=list)
+    cached: bool = False
+    model: str = ""
     latency_s: Optional[float] = None
     error: Optional[str] = None
 
 
 class RAGPipeline:
-    """
-    Full RAG pipeline:
-    1. Retrieve top-k relevant chunks from FAISS
-    2. Filter by minimum relevance score
-    3. Build context string
-    4. Generate answer with Ollama
-    """
-
     def __init__(
         self,
         vector_store: Optional[FAISSVectorStore] = None,
@@ -54,19 +52,22 @@ class RAGPipeline:
             self._llm_client = get_ollama_client()
         return self._llm_client
 
+    async def warm(self) -> None:
+        """Force the (CPU-bound) vector store + embedding model to load."""
+        await asyncio.to_thread(lambda: self.vector_store)
+
     # ── Retrieve relevant context ─────────────────────────────────────────────
-    def retrieve(self, question: str) -> tuple[List[str], List[dict]]:
-        results = self.vector_store.search(question, top_k=TOP_K_RETRIEVAL)
+    async def retrieve(self, question: str) -> Tuple[List[str], List[dict]]:
+        results = await asyncio.to_thread(
+            self.vector_store.search, question, TOP_K_RETRIEVAL
+        )
 
-        context_chunks = []
-        sources = []
-
+        context_chunks: List[str] = []
+        sources: List[dict] = []
         for chunk, score in results:
             if score < MIN_RELEVANCE_SCORE:
                 continue
-            context_chunks.append(
-                f"[{chunk.section}]\n{chunk.content}"
-            )
+            context_chunks.append(f"[{chunk.section}]\n{chunk.content}")
             sources.append(
                 {
                     "section": chunk.section,
@@ -75,61 +76,46 @@ class RAGPipeline:
                     "preview": chunk.content[:120] + "...",
                 }
             )
-
         return context_chunks, sources
 
     # ── Non-streaming RAG ─────────────────────────────────────────────────────
-    def query(self, question: str, use_cache: bool = True) -> RAGResponse:
-        context_chunks, sources = self.retrieve(question)
+    async def query(self, question: str) -> RAGResponse:
+        context_chunks, sources = await self.retrieve(question)
 
         if not context_chunks:
-            return RAGResponse(
-                answer="I don't have enough information to answer that question. "
-                       "Try asking about Morad's skills, projects, or experience.",
-                sources=[],
-                cached=False,
-                model=self.llm_client.model,
-            )
+            return RAGResponse(answer=NO_CONTEXT_MESSAGE, model=self.llm_client.model)
 
-        result = self.llm_client.generate(question, context_chunks, use_cache=use_cache)
-
+        result = await self.llm_client.generate(question, context_chunks)
         if "error" in result:
             return RAGResponse(
                 answer=result["error"],
                 sources=sources,
-                cached=False,
                 model=self.llm_client.model,
                 error=result["error"],
             )
-
         return RAGResponse(
             answer=result["response"],
             sources=sources,
-            cached=result.get("cached", False),
             model=result.get("model", ""),
             latency_s=result.get("latency_s"),
         )
 
-    # ── Streaming RAG ─────────────────────────────────────────────────────────
-    def stream(self, question: str) -> Generator[str, None, None]:
-        context_chunks, sources = self.retrieve(question)
+    # ── Streaming RAG (yields structured events) ──────────────────────────────
+    async def stream(self, question: str) -> AsyncGenerator[dict, None]:
+        context_chunks, sources = await self.retrieve(question)
 
         if not context_chunks:
-            yield "I don't have enough information to answer that. Try asking about Morad's skills or projects."
+            yield {"type": "token", "token": NO_CONTEXT_MESSAGE}
+            yield {"type": "done"}
             return
 
-        # Yield sources metadata as first SSE chunk
-        import json
-        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
-
-        # Stream tokens
-        for token in self.llm_client.stream(question, context_chunks):
-            yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
-
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        yield {"type": "sources", "sources": sources}
+        async for token in self.llm_client.stream(question, context_chunks):
+            yield {"type": "token", "token": token}
+        yield {"type": "done"}
 
 
-# ── Singleton ──────────────────────────────────────────────────────────────────
+# ── Singleton ────────────────────────────────────────────────────────────────
 _pipeline: RAGPipeline | None = None
 
 

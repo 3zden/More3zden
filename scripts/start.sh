@@ -5,8 +5,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
 
-OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
 OLLAMA_START_TIMEOUT=${OLLAMA_START_TIMEOUT:-300}
+BACKEND_START_TIMEOUT=${BACKEND_START_TIMEOUT:-180}
 
 echo "Starting More3zdenAI..."
 
@@ -42,13 +43,30 @@ docker compose exec ollama ollama pull $OLLAMA_MODEL
 echo "✅ Model $OLLAMA_MODEL downloaded"
 
 # 5. Start backend (builds FAISS index on first run)
-echo "🔧 Starting Django backend..."
+echo "🔧 Starting FastAPI backend..."
 docker compose up -d --build backend
 
 echo "⏳ Waiting for backend to be healthy..."
-until docker compose exec backend curl -sf http://localhost:8000/api/health/ > /dev/null 2>&1; do
+elapsed=0
+until docker compose exec -T backend curl -sf http://localhost:8000/api/health/ > /dev/null 2>&1; do
+  # Bail out early if the backend crashed instead of starting (e.g. bad DB
+  # credentials or a stale FAISS cache) — otherwise this loop spins forever.
+  status=$(docker compose ps --format '{{.Status}}' backend 2>/dev/null)
+  if echo "$status" | grep -qiE 'restarting|exited'; then
+    echo "❌ Backend is not starting (status: $status). Recent logs:"
+    docker compose logs --tail=40 backend
+    exit 1
+  fi
+
   sleep 5
-  echo "  still starting (building FAISS index)..."
+  elapsed=$((elapsed + 5))
+  echo "  still starting (building FAISS index)... (${elapsed}s)"
+
+  if [ "$elapsed" -ge "$BACKEND_START_TIMEOUT" ]; then
+    echo "❌ Backend did not become healthy within ${BACKEND_START_TIMEOUT}s. Recent logs:"
+    docker compose logs --tail=40 backend
+    exit 1
+  fi
 done
 echo "✅ Backend is healthy"
 

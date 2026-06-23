@@ -51,12 +51,15 @@ export async function checkHealth() {
 
 export function streamMessage(
   question: string,
+  sessionId: string | undefined,
   onToken: (token: string) => void,
   onSources: (sources: Source[]) => void,
   onDone: () => void,
   onError: (err: string) => void
 ): EventSource {
-  const url = `${API_URL}/api/chat/stream/?question=${encodeURIComponent(question)}`;
+  const params = new URLSearchParams({ question });
+  if (sessionId) params.set("session_id", sessionId);
+  const url = `${API_URL}/api/chat/stream/?${params.toString()}`;
   const es = new EventSource(url);
 
   es.onmessage = (e) => {
@@ -68,6 +71,7 @@ export function streamMessage(
         onDone();
         es.close();
       }
+      // data.type === "session" is informational; the client already owns the id.
     } catch {}
   };
 

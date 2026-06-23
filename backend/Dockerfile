@@ -1,9 +1,8 @@
 FROM python:3.12-slim
 
-# System deps
+# System deps (curl for the container healthcheck; build tools for any source wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -16,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # App code
 COPY . .
 
-# Data directory for FAISS index
+# Data directory for the FAISS index
 RUN mkdir -p /app/data
 
 # Non-root user
@@ -25,9 +24,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Startup: migrate → build index → serve
-CMD ["sh", "-c", "\
-    python manage.py migrate --noinput && \
-    python -c \"from rag.vector_store import FAISSVectorStore; s=FAISSVectorStore(); s.load_or_build()\" && \
-    gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120 --log-level info \
-"]
+# Schema creation + FAISS index build happen in the app's lifespan startup.
+# Single worker: the embedding model + FAISS index live in process memory.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

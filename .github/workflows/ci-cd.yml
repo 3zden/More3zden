@@ -42,18 +42,16 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Run Django tests
+      - name: Run backend tests
         working-directory: backend
         env:
-          DJANGO_SETTINGS_MODULE: config.settings
-          DJANGO_DEBUG: "True"
           POSTGRES_HOST: localhost
           POSTGRES_DB: test_db
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           REDIS_URL: redis://localhost:6379/0
           OLLAMA_BASE_URL: http://localhost:11434
-        run: python manage.py test api --verbosity=2
+        run: python -m pytest -q
 
   # ── Build Frontend ──────────────────────────────────────────────────────────
   test-frontend:
@@ -104,5 +102,4 @@ jobs:
             docker compose pull
             docker compose build --no-cache
             docker compose up -d --remove-orphans
-            docker compose exec -T backend python manage.py migrate --noinput
             echo "✅ Deployed successfully"

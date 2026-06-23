@@ -3,7 +3,6 @@ Document Loader & Chunker
 Loads markdown/text files from the knowledge base and splits them into
 semantic chunks ready for embedding.
 """
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,25 +102,13 @@ def load_knowledge_base(knowledge_base_dir: str) -> List[DocumentChunk]:
     all_chunks: List[DocumentChunk] = []
     kb_path = Path(knowledge_base_dir)
 
-    for filepath in kb_path.rglob("*.md"):
-        text = load_markdown_file(str(filepath))
-        source = filepath.stem
-        chunks = split_into_chunks(text, source=source)
-        all_chunks.extend(chunks)
-        print(f"[Loader] {filepath.name} → {len(chunks)} chunks")
-
-    for filepath in kb_path.rglob("*.txt"):
-        text = load_markdown_file(str(filepath))
-        source = filepath.stem
-        chunks = split_into_chunks(text, source=source)
-        all_chunks.extend(chunks)
-        print(f"[Loader] {filepath.name} → {len(chunks)} chunks")
+    for pattern in ("*.md", "*.txt"):
+        for filepath in kb_path.rglob(pattern):
+            text = load_markdown_file(str(filepath))
+            source = filepath.stem
+            chunks = split_into_chunks(text, source=source)
+            all_chunks.extend(chunks)
+            print(f"[Loader] {filepath.name} → {len(chunks)} chunks")
 
     print(f"[Loader] Total chunks loaded: {len(all_chunks)}")
     return all_chunks
-
-
-if __name__ == "__main__":
-    chunks = load_knowledge_base("../../knowledge_base")
-    for c in chunks[:3]:
-        print(f"\n--- {c.chunk_id} ---\n{c.content[:200]}")

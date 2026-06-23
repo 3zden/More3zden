@@ -8,6 +8,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so the
+# API base URL must be provided here — the runtime env var is ignored by
+# client-side code. Defaults to same-origin (served through nginx on :80).
+ARG NEXT_PUBLIC_API_URL=http://localhost
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 FROM node:20-alpine AS runner

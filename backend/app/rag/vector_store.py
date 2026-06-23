@@ -1,12 +1,11 @@
 """
 FAISS Vector Index
 Embeds document chunks using sentence-transformers and builds a FAISS index
-for fast semantic similarity search.
+for fast semantic similarity search. All methods are synchronous / CPU-bound;
+callers in async code should offload them with asyncio.to_thread.
 """
-import json
 import os
 import pickle
-from pathlib import Path
 from typing import List, Tuple
 
 import faiss
@@ -36,20 +35,17 @@ class FAISSVectorStore:
         self.index: faiss.Index | None = None
         self.chunks: List[DocumentChunk] = []
 
-    # ── Lazy-load the embedding model ─────────────────────────────────────────
     def _get_model(self) -> SentenceTransformer:
         if self.model is None:
             print(f"[FAISS] Loading embedding model: {self.model_name}")
             self.model = SentenceTransformer(self.model_name)
         return self.model
 
-    # ── Embed a list of strings ────────────────────────────────────────────────
     def embed(self, texts: List[str]) -> np.ndarray:
         model = self._get_model()
         embeddings = model.encode(texts, show_progress_bar=True, normalize_embeddings=True)
         return embeddings.astype("float32")
 
-    # ── Build index from knowledge base ───────────────────────────────────────
     def build(
         self,
         knowledge_base_dir: str = KNOWLEDGE_BASE_DIR,
@@ -58,23 +54,20 @@ class FAISSVectorStore:
     ) -> None:
         print("[FAISS] Building vector index...")
 
-        # Load & chunk documents
         self.chunks = load_knowledge_base(knowledge_base_dir)
         if not self.chunks:
             raise ValueError("No chunks found. Check your knowledge base directory.")
 
         texts = [chunk.content for chunk in self.chunks]
 
-        # Embed
         print(f"[FAISS] Embedding {len(texts)} chunks...")
         embeddings = self.embed(texts)
 
-        # Build inner-product index (cosine similarity because we normalize)
+        # Inner-product index == cosine similarity because embeddings are normalized.
         dim = embeddings.shape[1]
         self.index = faiss.IndexFlatIP(dim)
         self.index.add(embeddings)
 
-        # Persist
         os.makedirs(os.path.dirname(index_path), exist_ok=True)
         faiss.write_index(self.index, index_path)
         with open(chunks_path, "wb") as f:
@@ -82,7 +75,6 @@ class FAISSVectorStore:
 
         print(f"[FAISS] Index saved → {index_path} ({self.index.ntotal} vectors, dim={dim})")
 
-    # ── Load existing index from disk ─────────────────────────────────────────
     def load(
         self,
         index_path: str = INDEX_PATH,
@@ -98,10 +90,7 @@ class FAISSVectorStore:
             self.chunks = pickle.load(f)
         print(f"[FAISS] Loaded {self.index.ntotal} vectors, {len(self.chunks)} chunks")
 
-    # ── Semantic search ────────────────────────────────────────────────────────
-    def search(
-        self, query: str, top_k: int = 5
-    ) -> List[Tuple[DocumentChunk, float]]:
+    def search(self, query: str, top_k: int = 5) -> List[Tuple[DocumentChunk, float]]:
         if self.index is None:
             raise RuntimeError("Index not loaded. Call build() or load() first.")
 
@@ -116,7 +105,6 @@ class FAISSVectorStore:
 
         return results
 
-    # ── Convenience: rebuild if stale, otherwise load ─────────────────────────
     def load_or_build(
         self,
         knowledge_base_dir: str = KNOWLEDGE_BASE_DIR,
@@ -129,7 +117,7 @@ class FAISSVectorStore:
             self.build(knowledge_base_dir, index_path, chunks_path)
 
 
-# ── Singleton for use across Django app ───────────────────────────────────────
+# ── Singleton ────────────────────────────────────────────────────────────────
 _vector_store: FAISSVectorStore | None = None
 
 
@@ -139,15 +127,3 @@ def get_vector_store() -> FAISSVectorStore:
         _vector_store = FAISSVectorStore()
         _vector_store.load_or_build()
     return _vector_store
-
-
-if __name__ == "__main__":
-    store = FAISSVectorStore()
-    store.build(
-        knowledge_base_dir="../../knowledge_base",
-        index_path="../../data/faiss.index",
-        chunks_path="../../data/chunks.pkl",
-    )
-    results = store.search("What technologies do you use?", top_k=3)
-    for chunk, score in results:
-        print(f"\n[{score:.3f}] {chunk.section}\n{chunk.content[:150]}")

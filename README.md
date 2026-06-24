@@ -249,7 +249,7 @@ To enable deployment, add these secrets to your GitHub repository:
 | Variable | Default | Description |
 |---|---|---|
 | `DJANGO_SECRET_KEY` | — | Django secret key (change in production) |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model to use |
+| `OLLAMA_MODEL` | `Qwen 2.5` | Qwen model to use |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model |
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve |
 | `RAG_MIN_SCORE` | `0.3` | Minimum relevance score threshold |
@@ -297,7 +297,7 @@ docker compose down -v
 
 ## Author
 
-**Azzeddine Abouaam** — [3zden.me](https://3zden.me) · [github.com/3zden](https://github.com/3zden) · [linkedin.com/in/3zden](https://linkedin.com/in/3zden)
+**Azzeddine Abouaam** — [3zden.codes](https://3zden.codes) · [github.com/3zden](https://github.com/3zden) · [linkedin.com/in/3zden](https://linkedin.com/in/3zden)
 
 ---
 

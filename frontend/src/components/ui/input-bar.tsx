@@ -15,6 +15,32 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ── Minimal Web Speech API typings (not in the default DOM lib) ───────────────
+type SpeechRecognitionResultLike = { 0: { transcript: string }; isFinal: boolean };
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
 export type ChatStatus = "ready" | "streaming" | "submitted" | "idle";
 
 export type AttachedImage = {
@@ -47,6 +73,10 @@ export type InputBarProps = {
   autoFocus?: boolean;
   leftActions?: ReactNode;
   rightActions?: ReactNode;
+  /** Enable the mic / speech-to-text button (Web Speech API). Default true. */
+  enableVoiceInput?: boolean;
+  /** BCP-47 language tag for speech recognition. Default "en-US". */
+  voiceLang?: string;
 };
 
 const PaperclipIcon = ({ className = "w-[18px] h-[18px]" }) => (
@@ -111,6 +141,24 @@ const XIcon = ({ className = "w-3 h-3" }) => (
   </svg>
 );
 
+const MicIcon = ({ className = "w-[18px] h-[18px]" }) => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M5 10a7 7 0 0 0 14 0" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+  </svg>
+);
+
 const FileIcon = ({ className = "w-4 h-4" }) => (
   <svg
     width="16"
@@ -144,6 +192,37 @@ function AttachmentButton({
       className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
     >
       <PaperclipIcon />
+    </button>
+  );
+}
+
+function VoiceButton({
+  listening,
+  onClick,
+  disabled,
+}: {
+  listening: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={listening ? "Stop voice input" : "Start voice input"}
+      aria-pressed={listening}
+      className={cn(
+        "relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-40",
+        listening
+          ? "bg-red-500/10 text-red-500"
+          : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+      )}
+    >
+      {listening && (
+        <span className="absolute inset-0 animate-ping rounded-full bg-red-500/20" />
+      )}
+      <MicIcon />
     </button>
   );
 }
@@ -261,6 +340,8 @@ export const InputBar = memo(function InputBar({
   autoFocus,
   leftActions,
   rightActions,
+  enableVoiceInput = true,
+  voiceLang = "en-US",
 }: InputBarProps) {
   const [internalInput, setInternalInput] = useState("");
   const isControlled = controlledValue !== undefined;
@@ -273,6 +354,58 @@ export const InputBar = memo(function InputBar({
     [isControlled, controlledOnChange]
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Voice input (speech-to-text) ──────────────────────────────────────────
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceBaseRef = useRef("");
+  const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+
+  useEffect(() => {
+    setVoiceSupported(!!getSpeechRecognition());
+  }, []);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+  }, []);
+
+  useEffect(() => {
+    // Tear down recognition when the component unmounts.
+    return () => recognitionRef.current?.stop();
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) return;
+
+    const rec = new Ctor();
+    rec.lang = voiceLang;
+    rec.continuous = true;
+    rec.interimResults = true;
+    voiceBaseRef.current = input.trim() ? input.trim() + " " : "";
+
+    rec.onresult = (e) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      setInput((voiceBaseRef.current + transcript).slice(0, 4000));
+    };
+    const cleanup = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    rec.onend = cleanup;
+    rec.onerror = cleanup;
+
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  }, [input, voiceLang, setInput]);
 
   const isStreaming = status === "streaming" || status === "submitted";
   const hasInput = input.trim().length > 0;
@@ -296,9 +429,10 @@ export const InputBar = memo(function InputBar({
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming || disabled) return;
+    stopListening();
     onSend?.({ role: "user", content: trimmed });
     setInput("");
-  }, [input, isStreaming, disabled, onSend, setInput]);
+  }, [input, isStreaming, disabled, onSend, setInput, stopListening]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -387,6 +521,13 @@ export const InputBar = memo(function InputBar({
             <div className="flex items-center gap-1 min-w-0">
               {onAttach && (
                 <AttachmentButton onClick={onAttach} disabled={disabled} />
+              )}
+              {enableVoiceInput && voiceSupported && (
+                <VoiceButton
+                  listening={listening}
+                  onClick={toggleListening}
+                  disabled={disabled || isStreaming}
+                />
               )}
               {leftActions}
             </div>

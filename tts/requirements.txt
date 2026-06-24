@@ -1,0 +1,9 @@
+# LuxTTS microservice deps.
+# NOTE: the LuxTTS / ZipVoice inference package itself is installed from source
+# in the Dockerfile (github.com/ysharma3501/LuxTTS) — pin torch there to match
+# your CPU/GPU target.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+numpy>=1.26,<3
+huggingface_hub>=0.25

@@ -52,3 +52,9 @@ frontend/pnpm-debug.log*
 *.swo
 .DS_Store
 Thumbs.db
+
+# TTS reference voice clips (audio not committed)
+tts/voices/*.wav
+tts/voices/*.mp3
+tts/voices/*.flac
+tts/voices/*.ogg

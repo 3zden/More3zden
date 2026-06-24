@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     rag_min_score: float = 0.3
     rag_cache_ttl: int = 3600
 
+    # ── Text-to-Speech (LuxTTS voice cloning) ───────────────────────────────
+    tts_enabled: bool = True
+    tts_base_url: str = "http://tts:9000"
+    tts_timeout: int = 120
+    # Local espeak-ng fallback when the LuxTTS service is down (generic voice).
+    tts_local_fallback: bool = True
+
     # ── CORS ────────────────────────────────────────────────────────────────
     cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

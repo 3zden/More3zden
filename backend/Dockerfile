@@ -1,9 +1,11 @@
 FROM python:3.12-slim
 
-# System deps (curl for the container healthcheck; build tools for any source wheels)
+# System deps (curl for the container healthcheck; build tools for any source
+# wheels; espeak-ng for the local text-to-speech fallback)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

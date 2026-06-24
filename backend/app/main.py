@@ -15,7 +15,7 @@ from app.cache import close_cache
 from app.config import settings
 from app.database import init_db
 from app.rag import get_pipeline
-from app.routes import chat
+from app.routes import chat, tts
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(asctime)s %(name)s %(message)s")
 logger = logging.getLogger("api")
@@ -43,3 +43,4 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix="/api")
+app.include_router(tts.router, prefix="/api")

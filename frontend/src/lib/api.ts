@@ -49,6 +49,32 @@ export async function checkHealth() {
   return res.json();
 }
 
+/**
+ * Synthesize speech for `text` via the LuxTTS voice-cloning service and return
+ * an object URL for an <audio> element. Caller is responsible for revoking it.
+ * Throws with the service's message if TTS is unavailable (e.g. no reference voice).
+ */
+export async function synthesizeSpeech(text: string): Promise<string> {
+  const res = await fetch(`${API_URL}/api/tts/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) {
+    let detail = `TTS error: ${res.status}`;
+    try {
+      detail = (await res.json()).detail ?? detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail);
+  }
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export function streamMessage(
   question: string,
   sessionId: string | undefined,

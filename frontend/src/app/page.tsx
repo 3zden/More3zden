@@ -142,7 +142,7 @@ export default function Home() {
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative h-[100dvh] overflow-hidden">
       <GradientBackground />
       <div className="pointer-events-none fixed inset-0 z-[1] bg-black/15" />
 
@@ -155,7 +155,7 @@ export default function Home() {
         />
       )}
 
-      <div className="relative z-10 flex min-h-screen gap-2 p-2 sm:gap-3 sm:p-3">
+      <div className="relative z-10 flex h-full gap-2 p-2 sm:gap-3 sm:p-3">
         <div
           className={[
             "fixed inset-y-0 left-0 z-50 flex p-2 transition-transform duration-300 ease-out sm:p-3 md:static md:translate-x-0 md:p-0",
@@ -167,11 +167,11 @@ export default function Home() {
             onNewChat={handleNewChat}
             onSelectChat={setActiveChatId}
             onNavigate={closeSidebar}
-            className="h-[calc(100vh-1rem)] sm:h-[calc(100vh-1.5rem)] md:h-[calc(100vh-1.5rem)]"
+            className="h-full"
           />
         </div>
 
-        <div className="flex min-h-[calc(100vh-1rem)] min-w-0 flex-1 flex-col sm:min-h-[calc(100vh-1.5rem)]">
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex items-center px-1 pb-2 pt-1 md:hidden">
             <button
               type="button"

@@ -11,6 +11,10 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class TTSRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class Source(BaseModel):
     section: str
     source: str
